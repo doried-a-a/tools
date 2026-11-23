@@ -173,6 +173,7 @@ table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size
 th, td { text-align: start; vertical-align: top; padding: 0.7rem 0.8rem; border-bottom: 1px solid var(--line); }
 th { font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
 img { max-width: 100%; height: auto; }
+.diagram img { max-width: none; display: block; }
 .mermaid { margin: 1.5rem 0 2rem; padding: 1rem 0.25rem; overflow-x: auto; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
 .mermaid svg { max-width: none !important; height: auto; }
 .diagram { position: relative; margin: 1.5rem 0 2rem; }
@@ -189,8 +190,8 @@ img { max-width: 100%; height: auto; }
   user-select: none;
 }
 .diagram > .diagram-view {
-  height: min(70vh, var(--diagram-frame, 70vh));
-  max-height: none;
+  height: var(--diagram-frame, auto);
+  max-height: 70vh;
 }
 .diagram-view.is-dragging,
 .diagram-view.is-dragging svg { cursor: grabbing; }
@@ -232,7 +233,8 @@ img { max-width: 100%; height: auto; }
   max-height: none;
   display: flex;
 }
-#diagram-stage > svg { margin: auto; flex: none; }
+#diagram-stage > svg,
+#diagram-stage > img { margin: auto; flex: none; }
 .diagram-error { color: #9f1239; font-size: 15px; }
 @media (max-width: 800px) {
   body:not(.panel-open) #shell { padding-left: 0; }

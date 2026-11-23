@@ -108,33 +108,61 @@ async function drawDiagrams() {
 
 function mountDiagrams() {
   doc.querySelectorAll(".mermaid").forEach((node) => {
-    if (node.closest(".diagram")) return;
     const svg = node.querySelector("svg");
     if (!svg) return;
-    const frame = document.createElement("figure");
-    frame.className = "diagram";
-    const view = document.createElement("div");
-    view.className = "diagram-view";
-    view.tabIndex = 0;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "diagram-zoom";
-    button.textContent = "Zoom";
-    node.before(frame);
-    frame.append(button, view);
-    view.append(node);
-    const viewer = bindDiagram(view, svg, false);
-    button.addEventListener("click", () => openZoom(svg));
+    mountFrame(node, svg);
+  });
+}
+
+function mountImages() {
+  doc.querySelectorAll("img").forEach((img) => {
+    if (img.closest(".mermaid, .diagram")) return;
+    const start = () => {
+      if (!img.isConnected || !img.naturalWidth || img.closest(".diagram")) return;
+      mountFrame(img, img);
+    };
+    if (img.complete && img.naturalWidth) start();
+    else img.addEventListener("load", start, { once: true });
+  });
+}
+
+function mountFrame(container, media) {
+  if (container.closest(".diagram")) return;
+  const frame = document.createElement("figure");
+  frame.className = "diagram";
+  const view = document.createElement("div");
+  view.className = "diagram-view";
+  view.tabIndex = 0;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "diagram-zoom";
+  button.textContent = "Zoom";
+  const parent = container.parentElement;
+  const onlyChild = parent && parent.tagName === "P" && [...parent.childNodes].every((node) => {
+    return node === container || (node.nodeType === Node.TEXT_NODE && !node.textContent.trim());
+  });
+  if (onlyChild) parent.replaceWith(frame);
+  else container.before(frame);
+  frame.append(button, view);
+  view.append(container);
+  const arm = () => {
+    const viewer = bindDiagram(view, media, false);
+    button.addEventListener("click", () => openZoom(media));
     frame.addEventListener("pointerenter", () => {
       activeDiagram = viewer;
     });
     frame.addEventListener("pointerleave", () => {
       if (activeDiagram === viewer) activeDiagram = null;
     });
-  });
+  };
+  if (media.tagName === "IMG" && !(media.complete && media.naturalWidth)) {
+    media.addEventListener("load", arm, { once: true });
+  } else {
+    arm();
+  }
 }
 
-function bindDiagram(view, svg, wheelZooms) {
+function bindDiagram(view, media, wheelZooms) {
   let scale = 1;
   let home = 1;
   let baseW = 1;
@@ -142,20 +170,25 @@ function bindDiagram(view, svg, wheelZooms) {
   let drag = null;
 
   function measure() {
-    const box = svg.viewBox && svg.viewBox.baseVal;
+    if (media.naturalWidth > 0 && media.naturalHeight > 0) {
+      baseW = media.naturalWidth;
+      baseH = media.naturalHeight;
+      return;
+    }
+    const box = media.viewBox && media.viewBox.baseVal;
     if (box && box.width > 0 && box.height > 0) {
       baseW = box.width;
       baseH = box.height;
       return;
     }
-    const rect = svg.getBoundingClientRect();
+    const rect = media.getBoundingClientRect();
     baseW = Math.max(1, rect.width / scale);
     baseH = Math.max(1, rect.height / scale);
   }
 
   function layout() {
-    svg.style.width = `${baseW * scale}px`;
-    svg.style.height = `${baseH * scale}px`;
+    media.style.width = `${baseW * scale}px`;
+    media.style.height = `${baseH * scale}px`;
   }
 
   function zoomBy(factor, clientX, clientY) {
@@ -247,14 +280,21 @@ function bindDiagram(view, svg, wheelZooms) {
 
 function openZoom(source) {
   closeZoom();
-  const svg = source.cloneNode(true);
-  svg.style.width = "";
-  svg.style.height = "";
-  overlayStage.replaceChildren(svg);
+  const copy = source.cloneNode(true);
+  copy.style.width = "";
+  copy.style.height = "";
+  overlayStage.replaceChildren(copy);
   overlay.hidden = false;
-  overlayDiagram = bindDiagram(overlayStage, svg, true);
-  overlayDiagram.fit();
-  overlayClose.focus();
+  const start = () => {
+    overlayDiagram = bindDiagram(overlayStage, copy, true);
+    overlayDiagram.fit();
+    overlayClose.focus();
+  };
+  if (copy.tagName === "IMG" && !(copy.complete && copy.naturalWidth)) {
+    copy.addEventListener("load", start, { once: true });
+  } else {
+    start();
+  }
 }
 
 function closeZoom() {
@@ -270,11 +310,13 @@ async function show(text, contentType) {
   const scroll = initial ? 0 : window.scrollY;
   if (contentType.startsWith("image/")) {
     doc.innerHTML = `<p><img alt="" src="/raw?path=${encodeURIComponent(sourcePath)}" /></p>`;
+    mountImages();
   } else if (/\.(?:md|markdown)$/i.test(sourcePath)) {
-    doc.innerHTML = marked.parse(text);
+    doc.innerHTML = DOMPurify.sanitize(marked.parse(text));
     assignHeadingIds();
     rewriteLinks();
     await drawDiagrams();
+    mountImages();
   } else {
     doc.innerHTML = `<pre><code>${escapeHtml(text)}</code></pre>`;
   }
