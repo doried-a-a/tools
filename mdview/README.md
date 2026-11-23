@@ -1,6 +1,6 @@
 # mdview
 
-Local Markdown viewer. The browser receives the file’s current text and draws it. Saving the file updates the open page. ` ```mermaid ` blocks are drawn with Mermaid 12, using the ELK layout.
+Local Markdown viewer. The browser receives the file’s current text and draws it. Saving the file updates the open page. ` ```mermaid ` blocks are drawn with Mermaid 12, using the ELK layout. Each diagram has a Zoom button. On the page and in that zoom view, drag to scroll, and use +/−/0 or a pinch to zoom.
 
 ```bash
 mdview docs/planner-architecture.md

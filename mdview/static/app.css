@@ -175,6 +175,64 @@ th { font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; color: 
 img { max-width: 100%; height: auto; }
 .mermaid { margin: 1.5rem 0 2rem; padding: 1rem 0.25rem; overflow-x: auto; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
 .mermaid svg { max-width: none !important; height: auto; }
+.diagram { position: relative; margin: 1.5rem 0 2rem; }
+.diagram-view {
+  box-sizing: border-box;
+  overflow: auto;
+  max-height: 70vh;
+  padding: 1rem 0.25rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.diagram > .diagram-view {
+  height: min(70vh, var(--diagram-frame, 70vh));
+  max-height: none;
+}
+.diagram-view.is-dragging,
+.diagram-view.is-dragging svg { cursor: grabbing; }
+.diagram .mermaid { margin: 0; padding: 0; overflow: visible; border: 0; background: transparent; }
+.diagram-zoom,
+#diagram-close {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 251, 0.96);
+  color: var(--ink);
+  font: 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+.diagram-zoom:hover,
+#diagram-close:hover { background: #fff; }
+.diagram-zoom {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  right: 18px;
+}
+#diagram-overlay {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 56px 16px 16px;
+  background: #1c1917;
+}
+#diagram-overlay[hidden] { display: none; }
+#diagram-close { position: absolute; top: 14px; right: 16px; }
+#diagram-stage {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  display: flex;
+}
+#diagram-stage > svg { margin: auto; flex: none; }
 .diagram-error { color: #9f1239; font-size: 15px; }
 @media (max-width: 800px) {
   body:not(.panel-open) #shell { padding-left: 0; }

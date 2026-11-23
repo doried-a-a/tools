@@ -7,6 +7,9 @@ const upButton = document.querySelector("#browse-up");
 const scrim = document.querySelector("#browse-scrim");
 const rootLabel = document.querySelector("#browser-root");
 const sourcePath = new URLSearchParams(location.search).get("path") || "";
+const overlay = document.querySelector("#diagram-overlay");
+const overlayStage = document.querySelector("#diagram-stage");
+const overlayClose = document.querySelector("#diagram-close");
 
 const renderer = new marked.Renderer();
 renderer.code = function (token, info) {
@@ -36,6 +39,8 @@ let initial = true;
 let root = "";
 let parentPath = "";
 let treeReady = false;
+let activeDiagram = null;
+let overlayDiagram = null;
 const listings = new Map();
 const expanded = new Set();
 
@@ -98,9 +103,169 @@ async function drawDiagrams() {
     note.textContent = error.message || String(error);
     doc.prepend(note);
   }
+  mountDiagrams();
+}
+
+function mountDiagrams() {
+  doc.querySelectorAll(".mermaid").forEach((node) => {
+    if (node.closest(".diagram")) return;
+    const svg = node.querySelector("svg");
+    if (!svg) return;
+    const frame = document.createElement("figure");
+    frame.className = "diagram";
+    const view = document.createElement("div");
+    view.className = "diagram-view";
+    view.tabIndex = 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "diagram-zoom";
+    button.textContent = "Zoom";
+    node.before(frame);
+    frame.append(button, view);
+    view.append(node);
+    const viewer = bindDiagram(view, svg, false);
+    button.addEventListener("click", () => openZoom(svg));
+    frame.addEventListener("pointerenter", () => {
+      activeDiagram = viewer;
+    });
+    frame.addEventListener("pointerleave", () => {
+      if (activeDiagram === viewer) activeDiagram = null;
+    });
+  });
+}
+
+function bindDiagram(view, svg, wheelZooms) {
+  let scale = 1;
+  let home = 1;
+  let baseW = 1;
+  let baseH = 1;
+  let drag = null;
+
+  function measure() {
+    const box = svg.viewBox && svg.viewBox.baseVal;
+    if (box && box.width > 0 && box.height > 0) {
+      baseW = box.width;
+      baseH = box.height;
+      return;
+    }
+    const rect = svg.getBoundingClientRect();
+    baseW = Math.max(1, rect.width / scale);
+    baseH = Math.max(1, rect.height / scale);
+  }
+
+  function layout() {
+    svg.style.width = `${baseW * scale}px`;
+    svg.style.height = `${baseH * scale}px`;
+  }
+
+  function zoomBy(factor, clientX, clientY) {
+    const next = Math.min(8, Math.max(0.2, scale * factor));
+    if (Math.abs(next - scale) < 0.001) return;
+    const rect = view.getBoundingClientRect();
+    const px = clientX == null ? view.clientWidth / 2 : clientX - rect.left;
+    const py = clientY == null ? view.clientHeight / 2 : clientY - rect.top;
+    const anchorX = (view.scrollLeft + px) / scale;
+    const anchorY = (view.scrollTop + py) / scale;
+    scale = next;
+    layout();
+    view.scrollLeft = anchorX * scale - px;
+    view.scrollTop = anchorY * scale - py;
+  }
+
+  function fit() {
+    measure();
+    const availW = Math.max(1, view.clientWidth - 32);
+    const availH = Math.max(1, view.clientHeight - 32);
+    const next = Math.min(8, Math.max(0.2, Math.min(availW / baseW, availH / baseH)));
+    scale = next;
+    home = next;
+    layout();
+    view.scrollLeft = Math.max(0, (view.scrollWidth - view.clientWidth) / 2);
+    view.scrollTop = Math.max(0, (view.scrollHeight - view.clientHeight) / 2);
+  }
+
+  function reset() {
+    if (wheelZooms) {
+      fit();
+      return;
+    }
+    scale = home;
+    layout();
+    view.scrollLeft = 0;
+    view.scrollTop = 0;
+  }
+
+  measure();
+  layout();
+  if (!wheelZooms) {
+    const style = getComputedStyle(view);
+    const extra =
+      parseFloat(style.paddingTop) +
+      parseFloat(style.paddingBottom) +
+      parseFloat(style.borderTopWidth) +
+      parseFloat(style.borderBottomWidth);
+    view.style.setProperty("--diagram-frame", `${Math.ceil(baseH + extra)}px`);
+  }
+
+  view.addEventListener("wheel", (event) => {
+    if (!(wheelZooms || event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    zoomBy(Math.exp(-event.deltaY * 0.0016), event.clientX, event.clientY);
+  }, { passive: false });
+
+  view.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("a, button")) return;
+    drag = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      left: view.scrollLeft,
+      top: view.scrollTop,
+    };
+    view.setPointerCapture(event.pointerId);
+  });
+  view.addEventListener("pointermove", (event) => {
+    if (!drag || drag.id !== event.pointerId) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!view.classList.contains("is-dragging") && Math.hypot(dx, dy) < 4) return;
+    view.classList.add("is-dragging");
+    view.scrollLeft = drag.left - dx;
+    view.scrollTop = drag.top - dy;
+  });
+  function endDrag(event) {
+    if (!drag || drag.id !== event.pointerId) return;
+    drag = null;
+    view.classList.remove("is-dragging");
+  }
+  view.addEventListener("pointerup", endDrag);
+  view.addEventListener("pointercancel", endDrag);
+  view.addEventListener("dragstart", (event) => event.preventDefault());
+
+  return { zoomBy, reset, fit };
+}
+
+function openZoom(source) {
+  closeZoom();
+  const svg = source.cloneNode(true);
+  svg.style.width = "";
+  svg.style.height = "";
+  overlayStage.replaceChildren(svg);
+  overlay.hidden = false;
+  overlayDiagram = bindDiagram(overlayStage, svg, true);
+  overlayDiagram.fit();
+  overlayClose.focus();
+}
+
+function closeZoom() {
+  overlay.hidden = true;
+  overlayStage.replaceChildren();
+  overlayDiagram = null;
 }
 
 async function show(text, contentType) {
+  closeZoom();
+  activeDiagram = null;
   const gen = ++generation;
   const scroll = initial ? 0 : window.scrollY;
   if (contentType.startsWith("image/")) {
@@ -318,8 +483,29 @@ browseButton.addEventListener("click", () => setPanel(browser.hidden));
 closeButton.addEventListener("click", () => setPanel(false));
 scrim.addEventListener("click", () => setPanel(false));
 upButton.addEventListener("click", ascend);
+overlayClose.addEventListener("click", closeZoom);
+overlay.addEventListener("click", (event) => {
+  if (event.target === overlay) closeZoom();
+});
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !browser.hidden) setPanel(false);
+  if (event.key === "Escape") {
+    if (!overlay.hidden) {
+      closeZoom();
+      return;
+    }
+    if (!browser.hidden) setPanel(false);
+    return;
+  }
+  if (event.target instanceof Element && event.target.closest("input, textarea, [contenteditable='true']")) return;
+  const viewer = (!overlay.hidden && overlayDiagram) || activeDiagram;
+  if (!viewer) return;
+  const zoomIn = event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
+  const zoomOut = event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+  const reset = !event.shiftKey && (event.key === "0" || event.code === "Numpad0");
+  if (!zoomIn && !zoomOut && !reset) return;
+  event.preventDefault();
+  if (reset) viewer.reset();
+  else viewer.zoomBy(zoomIn ? 1.15 : 1 / 1.15);
 });
 
 if (sessionStorage.getItem("mdview.panel") === "open") setPanel(true);
